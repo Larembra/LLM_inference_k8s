@@ -27,6 +27,9 @@ spec:
         - name: models
           persistentVolumeClaim:
             claimName: model-cache
+        - name: request-audit
+          configMap:
+            name: request-audit
       initContainers:
         - name: download-model
           image: llm-model-loader:local
@@ -69,6 +72,8 @@ spec:
             - "0.35"
             - --api-key
             - $(API_TOKEN)
+            - --middleware
+            - request_audit.RequestAuditMiddleware
           envFrom:
             - configMapRef:
                 name: inference-config
@@ -86,6 +91,10 @@ spec:
               mountPath: /dev/shm
             - name: models
               mountPath: /models
+              readOnly: true
+            - name: request-audit
+              mountPath: /opt/venv/lib/python3.12/site-packages/request_audit.py
+              subPath: request_audit.py
               readOnly: true
           resources:
             requests:
