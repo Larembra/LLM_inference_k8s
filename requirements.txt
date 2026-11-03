@@ -1,0 +1,1 @@
+# Dependencies are supplied by the pinned vLLM base image.
