@@ -4,3 +4,8 @@ resources:
   - namespace.yaml
   - storage.yaml
   - deployment.yaml
+configMapGenerator:
+  - name: request-audit
+    namespace: llm-inference
+    files:
+      - request_audit.py
