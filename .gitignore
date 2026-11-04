@@ -1,40 +1,25 @@
-# Python
 __pycache__/
 *.py[cod]
-*.pyd
-.Python
-build/
-dist/
-*.egg-info/
 .venv/
 venv/
-env/
-
-# IDE
 .idea/
 .vscode/
 
-# Local secrets and environment files
+# секреты (на случай, если кто-то создаст их локально)
 .env
 .env.*
-!.env.example
-secrets.yaml
-secret*.yaml
 *.pem
 *.key
+secret*.yaml
 
-# Downloaded model weights and caches
+# веса, кэши, результаты
 models/
-model-cache/
-hf-cache/
 .cache/
 *.safetensors
-*.ckpt
+*.bin
 *.pt
 *.pth
-*.bin
-
-# Local outputs
+*.ckpt
 *.log
 *.tmp
-*.bak
+loadtest/out/

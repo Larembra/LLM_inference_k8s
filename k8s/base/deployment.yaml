@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  labels:
+    app.kubernetes.io/name: vllm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO-PVC и большой RAM: два пода одновременно не нужны
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vllm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vllm
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: model-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+      initContainers:
+        - name: download-model
+          image: llm-model-loader
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: inference-config
+          env:
+            - name: HF_TOKEN            # виден только загрузчику
+              valueFrom:
+                secretKeyRef:
+                  name: inference-secrets
+                  key: hf-token
+                  optional: true
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 4Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: vllm
+          image: llm-inference
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: inference-config
+          env:
+            - name: VLLM_API_KEY        # токен клиентов; не попадает в argv
+              valueFrom:
+                secretKeyRef:
+                  name: inference-secrets
+                  key: api-token
+            - name: HF_HUB_OFFLINE      # основной контейнер никогда не ходит в сеть за весами
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: { cpu: "4", memory: 8Gi }
+            limits: { cpu: "6", memory: 16Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true   # если vLLM упадёт на записи в ФС — закомментируйте
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5

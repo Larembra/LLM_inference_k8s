@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-inspect
+  namespace: llm-inference
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: inspect
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - find /models -maxdepth 3 -type f | head -40; echo CONFIG; cat /models/qwen2.5-1.5b-instruct/config.json
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - name: models
+          mountPath: /models
+  volumes:
+    - name: models
+      persistentVolumeClaim:
+        claimName: model-cache

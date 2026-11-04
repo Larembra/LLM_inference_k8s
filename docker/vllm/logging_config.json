@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "plain": {
+      "format": "%(levelname)s %(asctime)s [%(name)s] %(message)s",
+      "datefmt": "%m-%d %H:%M:%S"
+    }
+  },
+  "filters": {
+    "no_content": { "()": "request_audit.ContentRedactionFilter" }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "plain",
+      "level": "INFO",
+      "stream": "ext://sys.stdout",
+      "filters": ["no_content"]
+    }
+  },
+  "loggers": {
+    "vllm": { "handlers": ["console"], "level": "INFO", "propagate": false }
+  }
+}

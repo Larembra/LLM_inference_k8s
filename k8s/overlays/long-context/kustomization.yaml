@@ -1,11 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - namespace.yaml
-  - storage.yaml
-  - deployment.yaml
+  - ../../base
 configMapGenerator:
-  - name: request-audit
+  - name: inference-config
     namespace: llm-inference
-    files:
-      - request_audit.py
+    behavior: merge
+    envs:
+      - tuning.env

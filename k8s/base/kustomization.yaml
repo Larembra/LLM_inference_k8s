@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm-inference
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+# Хэш в имени ConfigMap => любое изменение inference.env само пересоздаёт под
+configMapGenerator:
+  - name: inference-config
+    envs:
+      - inference.env
+
+# Для Minikube/kind/реестра меняйте здесь, не трогая deployment.yaml
+images:
+  - name: llm-inference
+    newName: llm-inference
+    newTag: debug3
+  - name: llm-model-loader
+    newName: llm-model-loader
+    newTag: cachefix
