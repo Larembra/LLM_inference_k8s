@@ -53,6 +53,7 @@ python scripts/create_secret.py --rotate        # заменить API-токе�
 kubectl apply -k k8s/base
 kubectl rollout status deployment/vllm -n llm-inference --timeout=30m
 kubectl logs -n llm-inference deployment/vllm -c download-model
+kubectl port-forward -n llm-inference service/vllm 8000:8000
 ```
 Параметры инференса меняются в `k8s/base/inference.env` и применяются повторным `kubectl apply -k k8s/base`:
 имя ConfigMap содержит хэш, под пересоздаётся сам. Закрепите `MODEL_REVISION` на SHA, который напечатает загрузчик.
@@ -69,10 +70,12 @@ python ask.py --max-tokens 60 --system "Отвечай кратко" "Что т�
 ## 6. Кэш весов
 Первый запуск скачивает модель в PVC и пишет маркер `.download-complete`. При рестарте загрузчик видит маркер,
 пишет `already present ... no network access` и завершается без сети (`huggingface_hub` даже не импортируется).
-Основной контейнер дополнительно работает с `HF_HUB_OFFLINE=1`.
+Основной контейнер дополнительно работает с `HF_HUB_OFFLINE=1`. Если после рестарта нужно снова принимать запросы с локальной машины, запустите port-forward в отдельном окне и оставьте его работающим.
 ```bash
 kubectl rollout restart deployment/vllm -n llm-inference
+kubectl rollout status deployment/vllm -n llm-inference --timeout=30m
 kubectl logs -n llm-inference deployment/vllm -c download-model
+kubectl port-forward -n llm-inference service/vllm 8000:8000
 ```
 
 ## 7. Приватные логи
@@ -93,7 +96,11 @@ python loadtest/loadtest.py --label baseline --concurrency 1,2,4 --requests 8
 # другой профиль:
 kubectl apply -k k8s/overlays/short-flood        # или long-context
 kubectl rollout status deployment/vllm -n llm-inference
+kubectl port-forward -n llm-inference service/vllm 8000:8000  # в отдельном окне; после смены профиля запустить заново
 python loadtest/loadtest.py --label short-flood --scenarios short --concurrency 1,4,8,16 --requests 32
+kubectl apply -k k8s/overlays/long-context
+kubectl rollout status deployment/vllm -n llm-inference
+kubectl port-forward -n llm-inference service/vllm 8000:8000  # если предыдущий port-forward завершился
 python loadtest/loadtest.py --label long-context --scenarios long --long-tokens 6000 --concurrency 1,2 --requests 4
 ```
 Метрики: **TTFT** — время до первого токена; **Latency** — полное время запроса; **TPOT** — мс на токен после первого;

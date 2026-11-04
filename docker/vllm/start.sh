@@ -2,11 +2,6 @@
 # Параметры приходят из ConfigMap (envFrom), токен API — из Secret через VLLM_API_KEY (не через argv).
 set -eu
 
-printf 'MODEL_PATH=%s\nSERVED_MODEL_NAME=%s\n' "$MODEL_PATH" "$SERVED_MODEL_NAME"
-printf 'ARGS:'
-printf ' <%s>' "$@"
-printf '\n'
-
 : "${VLLM_API_KEY:?VLLM_API_KEY is required: refusing to start an unauthenticated API}"
 : "${MODEL_PATH:?}" "${SERVED_MODEL_NAME:?}" "${MAX_MODEL_LEN:?}" "${MAX_NUM_SEQS:?}" "${MAX_NUM_BATCHED_TOKENS:?}"
 
