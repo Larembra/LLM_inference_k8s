@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vllm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vllm
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector: {}          # только поды этого namespace
+      ports:
+        - { port: 8000, protocol: TCP }
+  egress:
+    - ports:                       # DNS
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - ports:                       # HTTPS: загрузчик -> huggingface.co
+        - { port: 443, protocol: TCP }
