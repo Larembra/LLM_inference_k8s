@@ -22,4 +22,5 @@ models/
 *.ckpt
 *.log
 *.tmp
+*.tar
 loadtest/out/

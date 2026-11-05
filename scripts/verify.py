@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Проверки безопасности и приватности после деплоя (нужен port-forward на :8000).
 
-  1. без токена -> 401
-  2. с токеном  -> 200
+  1. без токена закрыты /v1/*, /invocations, /tokenize, /metrics, /docs, /openapi.json, /version
+  2. с токеном запрос к модели -> 200
   3. в логах vLLM нет canary-промпта, начала ответа и самого токена; факт обращения есть
   4. токен не виден в argv процесса (/proc/1/cmdline)
 """
@@ -34,8 +34,9 @@ def call(path: str, token: str | None = None, payload: dict | None = None) -> tu
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    data = json.dumps(payload).encode() if payload else None
-    request = Request(BASE + path, data=data, headers=headers, method="POST" if payload else "GET")
+    data = json.dumps(payload).encode() if payload is not None else None
+    request = Request(BASE + path, data=data, headers=headers,
+                      method="POST" if payload is not None else "GET")
     try:
         with OPENER.open(request, timeout=900) as response:
             return response.status, response.read().decode("utf-8")
@@ -51,8 +52,24 @@ def main() -> int:
         print("Не удалось получить токен (LLM_API_TOKEN или доступ kubectl к Secret).")
         return 2
 
-    status, _ = call("/v1/models")
-    report(status == 401, "запрос без токена отклонён", f"HTTP {status}")
+    chat = {"model": DEFAULT_MODEL, "max_tokens": 4,
+            "messages": [{"role": "user", "content": "hi"}]}
+    unauthenticated = [
+        ("GET", "/v1/models", None),
+        ("POST", "/v1/chat/completions", chat),
+        ("POST", "/invocations", chat),
+        ("POST", "/tokenize", {"model": DEFAULT_MODEL, "prompt": "hi"}),
+        ("GET", "/metrics", None),
+        ("GET", "/docs", None),
+        ("GET", "/openapi.json", None),
+        ("GET", "/version", None),
+    ]
+    for method, path, body in unauthenticated:
+        status, _ = call(path, None, body if method == "POST" else None)
+        report(status in (401, 403, 404), f"без токена закрыт {method} {path}", f"HTTP {status}")
+
+    status, _ = call("/health")
+    report(status == 200, "/health доступен для проб", f"HTTP {status}")
 
     canary = f"CANARY-{secrets.token_hex(8)}"
     status, body = call("/v1/chat/completions", token, {
@@ -64,13 +81,19 @@ def main() -> int:
     if status == 200:
         answer = json.loads(body)["choices"][0]["message"]["content"].strip()
 
+    # canary в запросе с ошибкой: слишком большое max_tokens
+    call("/v1/chat/completions", token, {
+        "model": DEFAULT_MODEL, "max_tokens": 10_000_000,
+        "messages": [{"role": "user", "content": f"error path {canary}"}],
+    })
+
     time.sleep(2)
     logs = subprocess.run(
         ["kubectl", "logs", "-n", NAMESPACE, "deployment/vllm", "-c", "vllm", "--tail=-1"],
         capture_output=True, text=True,
     ).stdout
     report(bool(logs), "логи получены")
-    report(canary not in logs, "промпт (canary) отсутствует в логах")
+    report(canary not in logs, "промпт (canary) отсутствует в логах (успех и ошибка)")
     snippet = answer[:20]
     report(len(snippet) < 12 or snippet not in logs, "начало ответа модели отсутствует в логах")
     report(token not in logs, "API-токен отсутствует в логах")

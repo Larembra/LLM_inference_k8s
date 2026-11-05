@@ -1,8 +1,12 @@
-"""Приватный аудит-лог для vLLM.
+"""Приватный аудит-лог и фильтр путей для vLLM.
 
 Содержит:
-  * RequestAuditMiddleware — чистый ASGI: пишет факт обращения (метод, путь без query,
-    статус, TTFB, длительность, IP клиента). Тело запроса/ответа и заголовки НЕ читаются.
+  * RequestAuditMiddleware — чистый ASGI:
+      - пропускает только /health и /v1/* (на /v1/* токен проверяет сам vLLM),
+        всё остальное (/invocations, /metrics, /tokenize, /docs, ...) получает 404
+        ДО обращения к vLLM, поэтому дыр без авторизации не остаётся;
+      - пишет факт обращения (метод, путь без query, статус, TTFB, длительность, IP).
+        Тело запроса/ответа и заголовки НЕ читаются.
   * ContentRedactionFilter — подключается к логгерам vLLM через logging_config.json:
     вырезает содержимое RequestLogger vLLM (prompt / output) и трейсбеки,
     в которых могут оказаться пользовательские данные.
@@ -22,17 +26,35 @@ if not _audit.handlers:
     _audit.setLevel(logging.INFO)
     _audit.propagate = False
 
-_QUIET_PATHS = {"/health", "/ping", "/metrics"}  # пробы не засоряют лог (DEBUG)
+_QUIET_PATHS = {"/health"}  # пробы не засоряют лог (DEBUG)
+
+# Белый список: /health открыт для проб, /v1/* защищён --api-key / VLLM_API_KEY самого vLLM
+_ALLOWED_EXACT = frozenset({"/health"})
+_ALLOWED_PREFIXES = ("/v1/",)
+
+
+def _is_allowed(path: str) -> bool:
+    return path in _ALLOWED_EXACT or path.startswith(_ALLOWED_PREFIXES)
 
 
 class RequestAuditMiddleware:
     def __init__(self, app):
         self.app = app
-        _audit.info("request-audit middleware initialized")
+        _audit.info("request-audit middleware initialized (allowed: /health, /v1/*)")
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
+        scope_type = scope["type"]
+
+        if scope_type not in ("http", "websocket"):  # lifespan и т.п.
             await self.app(scope, receive, send)
+            return
+
+        if scope_type == "websocket":
+            if _is_allowed(scope.get("path", "")):
+                await self.app(scope, receive, send)
+            else:
+                await receive()  # websocket.connect
+                await send({"type": "websocket.close", "code": 1008})
             return
 
         started = time.perf_counter()
@@ -45,7 +67,19 @@ class RequestAuditMiddleware:
             await send(message)
 
         try:
-            await self.app(scope, receive, send_wrapper)
+            if _is_allowed(scope.get("path", "")):
+                await self.app(scope, receive, send_wrapper)
+            else:
+                body = b"Not Found"
+                await send_wrapper({
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [
+                        (b"content-type", b"text/plain; charset=utf-8"),
+                        (b"content-length", str(len(body)).encode("ascii")),
+                    ],
+                })
+                await send_wrapper({"type": "http.response.body", "body": body})
         finally:
             path = scope.get("path", "-")
             client = (scope.get("client") or ("-",))[0]
