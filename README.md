@@ -31,16 +31,28 @@ docker run --rm -v "${PWD}/docker/vllm:/work" --entrypoint python $IMG /work/loc
 Аудит уязвимостей: `pip-audit -r docker/vllm/requirements.txt` и `pip-audit -r loader/requirements.txt`.
 
 ## 2. Сборка образов
+Меняйте тег при каждой пересборке: с `imagePullPolicy: IfNotPresent` кластер молча берёт образ со старым тегом.
 ```bash
-docker build -t llm-inference:local docker/vllm
-docker build -t llm-model-loader:local loader
+docker build -t llm-inference:r2 docker/vllm
+docker build -t llm-model-loader:r1 loader
 ```
-Доставка образов в кластер:
-- Docker Desktop (Kubernetes): ничего не нужно.
-- Minikube: `minikube image load llm-inference:local llm-model-loader:local`
-- kind: `kind load docker-image llm-inference:local llm-model-loader:local`
-- Реальный кластер: запушьте в реестр и поправьте `images:` в `k8s/base/kustomization.yaml`.
+Укажите те же теги в `images:` файла `k8s/base/kustomization.yaml`.
 
+Доставка образов в кластер (узнайте тип кластера: если узел называется `desktop-control-plane`, это kind):
+- Docker Desktop с kubeadm-кластером: ничего не нужно, образы общие с Docker.
+- Docker Desktop с kind-кластером (узел `desktop-control-plane`): образы нужно загрузить в узел.
+  ```powershell
+  docker save --platform linux/amd64 -o llm-images.tar llm-inference:r2 llm-model-loader:r1
+  docker cp llm-images.tar desktop-control-plane:/llm-images.tar
+  docker exec desktop-control-plane ctr -n k8s.io images import /llm-images.tar
+  docker exec desktop-control-plane crictl images | Select-String "llm"
+  ```
+  Не передавайте вывод `docker save` через конвейер PowerShell: бинарные данные портятся.
+- kind (отдельно установленный): `kind load docker-image llm-inference:r2 llm-model-loader:r1 --name <кластер>`
+- Minikube: `minikube image load llm-inference:r2 llm-model-loader:r1`
+- Реальный кластер: запушьте в реестр и поправьте `newName` в `images:` файла `k8s/base/kustomization.yaml`.
+
+Проверить, что в поде запущен нужный образ: `kubectl get pod -n llm-inference -o jsonpath="{.items[0].spec.containers[*].image}"`.
 ## 3. Secret (токены не печатаются, не попадают в историю и в файлы)
 ```bash
 python scripts/create_secret.py                 # случайный API-токен

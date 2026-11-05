@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/name: vllm
 spec:
   replicas: 1
+  progressDeadlineSeconds: 3600   # первый запуск: скачивание весов + загрузка модели на CPU
   strategy:
     type: Recreate          # RWO-PVC и большой RAM: два пода одновременно не нужны
   selector:

@@ -14,11 +14,11 @@ configMapGenerator:
     envs:
       - inference.env
 
-# Для Minikube/kind/реестра меняйте здесь, не трогая deployment.yaml
+# Тег меняйте при каждой пересборке: с IfNotPresent кластер молча берёт старый образ
 images:
   - name: llm-inference
     newName: llm-inference
-    newTag: debug3
+    newTag: r2
   - name: llm-model-loader
     newName: llm-model-loader
-    newTag: cachefix
+    newTag: r1
