@@ -21,4 +21,4 @@ images:
     newTag: r2
   - name: llm-model-loader
     newName: llm-model-loader
-    newTag: r1
+    newTag: r2
