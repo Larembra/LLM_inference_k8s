@@ -34,9 +34,12 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 2Gi
-        - name: tmp
+        - name: loader-tmp      # кэш загрузчика (hf-xet, частичные файлы), отдельно от vLLM
           emptyDir:
-            sizeLimit: 2Gi
+            sizeLimit: 8Gi
+        - name: tmp             # кэши vLLM и torch
+          emptyDir:
+            sizeLimit: 6Gi
       initContainers:
         - name: download-model
           image: llm-model-loader
@@ -54,7 +57,7 @@ spec:
           volumeMounts:
             - name: models
               mountPath: /models
-            - name: tmp
+            - name: loader-tmp
               mountPath: /tmp
           resources:
             requests: { cpu: 100m, memory: 256Mi }
